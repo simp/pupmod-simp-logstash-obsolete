@@ -1,0 +1,7 @@
+# Common things that show up in audit events are better handled using patterns.
+AUDITHEADER	node=.*type=%{WORD:audit_type} msg=audit\(%{WORD:audit_epoch}.%{WORD:audit_event_id}:%{NUMBER:audit_pid}\):
+#The GREEDYDATA at the end is dangerous.  Make sure we understand the true value of that field and remove the GREEDYDATA.
+SUBJ %{WORD:audit_se_user}:%{WORD:audit_se_role}:%{WORD:audit_se_type}:%{GREEDYDATA:audit_se_level}
+OBJ %{WORD:audit_se_user}:%{WORD:audit_se_role}:%{WORD:audit_se_type}:%{GREEDYDATA:audit_se_level}
+SCONTEXT %{WORD:audit_se_suser}:%{WORD:audit_se_srole}:%{WORD:audit_se_stype}:%{GREEDYDATA:audit_se_slevel}
+TCONTEXT %{WORD:audit_se_tuser}:%{WORD:audit_se_trole}:%{WORD:audit_se_ttype}:%{GREEDYDATA:audit_se_tlevel}

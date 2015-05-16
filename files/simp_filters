@@ -1,0 +1,65 @@
+#SIMP Logstash Filters
+filter {
+	if [program] == "sshd" {
+		grok {
+			match => ["message", "%{WORD:ssh_status} %{WORD:ssh_auth_type} for %{USER:user} from %{IP:src_ip} port %{NUMBER:src_port} %{WORD:src_protocol}"]
+			match => ["message", "Invalid user %{USER:user} from %{IP:src_ip}"]
+	  }
+	}
+
+	if [program] == "sudosh" {
+		grok {
+			match => ["message", "\[%{NUMBER:sudosh_session_id}\]:"]
+			match => ["message", "starting session for %{USER:user} as root, session id %{NUMBER:sudosh_session_id}"]
+		}
+	}
+
+	if [program] == "slapd_audit" {
+		multiline {
+			pattern => "^#.end."
+			negate  => "true"
+			what    => "next"
+			stream_identity => "%{host}"
+		}
+		grok {
+			match => ["message", "changetype: %{WORD:ldap_changetype}"]
+			# LDAP Modfies happen often so we should figure out what changed.
+			match => ["message", "(delete|replace): %{WORD:ldap_modify}"]
+		}
+	}
+
+	if [program] == "puppet-agent"  and [message] =~ "^Finished" {
+		grok {
+			match => ["message", "Finished catalog run in %{NUMBER:puppet_agent_runtime2} seconds"]
+		}
+	}
+
+	if [program] == "puppet-master" and [message] =~ "^Compiled" {
+		grok {
+			match => ["message", "Compiled catalog for %{HOSTNAME:hostname} in environment production in %{NUMBER:puppet_master_compile_time} seconds"]
+		}
+	}
+
+# These need to be combined or made more effecient in the future.  Could slow down log flow on high volume systems.
+	if [program] == "audispd" {
+		grok {
+			match => ["message", "%{AUDITHEADER} pid=%{NUMBER:audit_pid} uid=%{NUMBER:audit_uid} auid=%{NUMBER:audit_auid} ses=%{NUMBER:audit_session} subj=%{SUBJ} msg=.*op=%{GREEDYDATA:audit_op} acct=\"%{WORD:user}\" exe=\"%{GREEDYDATA:audit_exe}\".*addr=%{GREEDYDATA:audit_addr} terminal=%{GREEDYDATA:audit_terminal} res=%{WORD:audit_res}"]
+			match => ["message", "%{AUDITHEADER}.*avc:  %{WORD:audit_se_status}.*\{ %{WORD:audit_se_action} \}.*pid=%{NUMBER:audit_pid} comm=\"%{GREEDYDATA:audit_comm}\" name=\"%{GREEDYDATA:audit_name}\" dev=\"%{GREEDYDATA:audit_dev}\" ino=%{NUMBER:audit_ino} scontext=%{SCONTEXT} tcontext=%{TCONTEXT} tclass=%{WORD:audit_tclass}"]
+			match => ["message", "%{AUDITHEADER} pid=%{NUMBER:audit_pid} uid=%{NUMBER:audit_uid} auid=%{NUMBER:audit_auid} ses=%{NUMBER:audit_session} subj=%{SUBJ} msg=.*op=%{GREEDYDATA:audit_op} acct=\"%{WORD:user}\" exe=\"%{GREEDYDATA:audit_exe}\".*addr=%{GREEDYDATA:audit_addr} terminal=%{GREEDYDATA:audit_terminal} res=%{WORD:audit_res}"]
+			match => ["message", "%{AUDITHEADER} auid=%{NUMBER:audit_auid} ses=%{NUMBER:audit_session} subj=%{SUBJ} op=%{GREEDYDATA:audit_key} list=%{NUMBER:audit_list} res=%{NUMBER:audit_res}"]
+      # Gets CWD
+			match => ["message", "%{AUDITHEADER}.*cwd=\"%{GREEDYDATA:audit_cwd}\""]
+			# This one seems to be just for service restarts and might not be needed.
+			match => ["message", "%{AUDITHEADER} audit_rate_limit=%{NUMBER:audit_rate_limit} old=%{NUMBER:audit_old} auid=%{NUMBER:audit_auid} ses=%{NUMBER:audit_ses} subj=%{SUBJ} res=%{NUMBER:audit_res}"]
+      # Same thing with this one.
+			match => ["message", "%{AUDITHEADER} audit_rate_limit=%{NUMBER:audit_rate_limit} old=%{NUMBER:audit_old} auid=%{NUMBER:audit_auid} ses=%{NUMBER:audit_ses} subj=%{SUBJ} res=%{NUMBER:audit_res}"]
+			match => ["message", "%{AUDITHEADER} pid=%{NUMBER:audit_pid} uid=%{NUMBER:audit_uid} auid=%{NUMBER:audit_auid} ses=%{NUMBER:audit_session} subj=%{SUBJ} msg=.*comm=\"%{GREEDYDATA:audit_comm}\" exe=\"%{GREEDYDATA:audit_exe}\".*terminal=%{GREEDYDATA:audit_terminal} res=%{WORD:audit_res}"]
+			match => ["message", "%{AUDITHEADER} pid=%{NUMBER:audit_pid} uid=%{NUMBER:audit_uid} subj=%{SUBJ} old-auid=%{NUMBER:audit_oldauid} auid=%{NUMBER:audit_auid} old-ses=%{NUMBER:audit_oldses} ses=%{NUMBER:audit_ses} res=%{WORD:audit_res}"]
+			match => ["message", "%{AUDITHEADER} item=%{NUMBER:audit_item} name=%{GREEDYDATA:audit_name} inode=%{NUMBER:audit_inode} dev=%{GREEDYDATA:audit_dev} mode=%{NUMBER:audit_mode} ouid=%{NUMBER:audit_ouid} ogid=%{NUMBER:audit_ogid} rdev=%{GREEDYDATA:audit_rdev} obj=%{OBJ} objtype=%{WORD:audit_se_objtype}"]
+			match => ["message", "%{AUDITHEADER} arch=%{WORD:audit_arch} syscall=%{NUMBER:audit_syscall} success=%{WORD:audit_success} exit=%{GREEDYDATA:audit_exit} a0=%{WORD:audit_a0} a1=%{WORD:audit_a1} a2=%{WORD:audit_a2} a3=%{WORD:audit_a3} items=%{NUMBER:audit_items} ppid=%{NUMBER:audit_ppid} pid=%{NUMBER:audit_pid} auid=%{NUMBER:audit_auid} uid=%{NUMBER:audit_uid} gid=%{NUMBER:audit_gid} euid=%{NUMBER:audit_euid} suid=%{NUMBER:audit_suid} fsuid=%{NUMBER:audit_fsuid} egid=%{NUMBER:audit_egid} sgid=%{NUMBER:audit_sgid} fsgid=%{NUMBER:audit_fsgid} tty=%{GREEDYDATA:audit_tty} ses=%{NUMBER:audit_ses} comm=\"%{GREEDYDATA:audit_comm}\" exe=\"%{GREEDYDATA:audit_exe}\" subj=%{SUBJ} key=\"%{GREEDYDATA:audit_key}\""]
+      # Don't have  catch all rule so that we I can find the unpasred audit log messages
+			#match => ["message", "%{AUDITHEADER}"]
+			tag_on_failure => ["unmatched_audit_event"]
+		}
+	}
+}
